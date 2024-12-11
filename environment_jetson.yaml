@@ -1,0 +1,28 @@
+name: sam2
+channels:
+  - pytorch
+    # - nvidia/label/cuda-12.2.2
+  - conda-forge # TODO
+dependencies:
+  - cpython=3.10
+  - numpy<2
+  # - opencv
+  # - cudnn=8
+  # - cuda-toolkit
+  # - cuda-cudart
+  # - cuda-cupti
+  # - libcusparse
+  # - libcublas=12
+  # - cmake=3.14.0
+  - pip:
+    - .
+      - boxmot==10.0.52
+      - ultralytics==8.3.27
+      - matplotlib
+      - opencv-python
+      - ultralytics
+      - wandb
+      - timm
+    - ./contrib/torch-2.3.0-cp310-cp310-linux_aarch64.whl
+    - ./contrib/torchaudio-2.3.0+952ea74-cp310-cp310-linux_aarch64.whl
+    - ./contrib/torchvision-0.18.0a0+6043bc2-cp310-cp310-linux_aarch64.whl
