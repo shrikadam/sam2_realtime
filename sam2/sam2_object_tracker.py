@@ -64,6 +64,9 @@ class SAM2ObjectTracker(SAM2Base):
         Updates the Kalman filter for object tracking based on the current object, IoU scores,
         low and high resolution multi-masks, and SAM output tokens.
 
+        The original code can be found in the SAMURAI repo and has been adapted to work with multiple objects:
+        https://github.com/yangchris11/samurai/blob/master/sam2/sam2/modeling/sam2_base.py#L421-L509
+
         Parameters
         ----------
         obj : int
