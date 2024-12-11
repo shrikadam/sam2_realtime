@@ -31,7 +31,7 @@ conda env create -f environment.yml
 
 ### 2. Clone SAM2 Realtime Repo
 ```
-https://github.com/zdata-inc/sam2_realtime
+git clone https://github.com/zdata-inc/sam2_realtime
 ```
 
 ### 2. Install SAM2
