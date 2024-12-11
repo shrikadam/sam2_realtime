@@ -464,7 +464,7 @@ def run(source: str,
 
     visualizer = None
     if visualize:
-        from visualization.visualizer import Visualizer
+        from visualizer import Visualizer
         visualizer = Visualizer(video_width=1024,
                                 video_height=1024,
                                 num_masks=num_objects if not boxmot else 50,
