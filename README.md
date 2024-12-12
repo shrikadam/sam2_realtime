@@ -1,7 +1,7 @@
 # SAM2 Real-Time Detection and Tracking
 
 This repository adapts **[SAM2](https://github.com/facebookresearch/sam2)** to include real-time multi-object tracking. 
-It allows users to specify and track a fixed number of objects in real time, integrating motion-aware memory selection 
+It allows users to specify and track a fixed number of objects in real time, integrating motion modeling 
 from **[SAMURAI](https://github.com/yangchris11/samurai)** for improved tracking in complex scenarios.  
 
 ### About SAM2
@@ -9,8 +9,18 @@ from **[SAMURAI](https://github.com/yangchris11/samurai)** for improved tracking
 for performing this in real time.
 
 ### About SAMURAI
-**SAMURAI** enhances SAM2 by introducing motion-aware memory selection, leveraging temporal motion cues for better 
+**SAMURAI** enhances SAM2 by introducing motion modeling, leveraging temporal motion cues for better 
 tracking accuracy without retraining or fine-tuning.  
+
+#### Note on SAMURAI Features
+While this repository integrates SAMURAI's motion modeling, it does not support the motion-aware memory selection mechanism, 
+as conditional operations applied to memory would simultaneously affect all tracked objects.
+
+The core implementation of SAMURAI's motion modeling, originally found in 
+[sam2_base.py](https://github.com/yangchris11/samurai/blob/master/sam2/sam2/modeling/sam2_base.py) in SAMURAI's 
+repository, has been relocated to 
+[sam2_object_tracker.py](https://github.com/zdata-inc/sam2_realtime/blob/main/sam2/sam2_object_tracker.py) in this 
+repository to maintain the original SAM2 codebase.
 
 ## Key Features
 
@@ -53,7 +63,7 @@ cd ..
 ## Usage
 ### Demo
 Run the demo notebook to visualize YOLO object detection and SAM2 object tracking in action:  
-`demo/detect_and_track.ipynb`
+`notebooks/realtime_detect_and_track.ipynb`
 
 ### Inference
 To perform detection and tracking on a video source, use the following script:  
