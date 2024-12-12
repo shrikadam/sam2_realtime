@@ -2,22 +2,18 @@ import argparse
 import os
 import time
 from pathlib import Path
-from typing import List, Dict
+from typing import List, Dict, Any
 
 import cv2
 import matplotlib.pyplot as plt
 import numpy as np
 import torch
 import torch.nn.functional as F
+import yaml
 from boxmot import StrongSORT
 from ultralytics import YOLO
 
 from sam2.build_sam import build_sam2_object_tracker
-
-SAM_CHECKPOINT_FILEPATH = "./checkpoints/sam2.1_hiera_base_plus.pt"
-YOLO_CHECKPOINT_FILEPATH = "yolov8x-seg.pt"
-BOXMOT_CHECKPOINT_FILEPATH = "osnet_x0_25_msmt17.pt"
-SAM_CONFIG_FILEPATH = "./configs/samurai/sam2.1_hiera_b+.yaml"
 
 
 def parse_args():
@@ -28,34 +24,34 @@ def parse_args():
                         required=True,
                         help='Path to the data source'
                         )
-    parser.add_argument('--num_objects',
-                        type=int,
-                        default=2,
-                        help='Maximum number of objects to track with SAM'
-                        )
-    parser.add_argument('--labels',
-                        type=int,
-                        nargs='+',
-                        default=None,
-                        help='YOLO class labels to detect (e.g., 0 1 2)'
-                        )
-    parser.add_argument('--device',
+
+    parser.add_argument('--cfg_filepath',
                         type=str,
-                        default='cuda:1',
-                        help='Device to run the SAM and YOLO model on'
-                        )
-    parser.add_argument('--boxmot',
-                        action="store_true",
-                        help='Whether to use multi-object tracking algorithms instead of SAM'
-                        )
-    parser.add_argument('--visualize',
-                        action="store_true",
-                        help='Whether to visualize tracking'
+                        required=True,
+                        help='Path to the config file'
                         )
 
     args = parser.parse_args()
 
     return args
+
+
+class Config:
+    def __init__(self, config_dict: Dict[str, Any]):
+        for key, value in config_dict.items():
+            if isinstance(value, dict):
+                setattr(self, key, Config(value))
+            else:
+                setattr(self, key, value)
+
+    def __getattr__(self, item: str) -> Any:
+        return object.__getattr__(self, item)
+
+def load_config(config_file: str) -> Config:
+    with open(config_file, 'r') as file:
+        config_dict = yaml.safe_load(file)
+
+    return Config(config_dict)
 
 
 class SAMTracker:
@@ -421,45 +417,39 @@ class YOLODetector:
 
 
 class Tracker:
-    def __init__(self,
-                 device: str,
-                 labels: List = None,
-                 visualize: bool = False,
-                 num_objects: int = None,
-                 boxmot: bool = False
-                 ):
+    def __init__(self, cfg_filepath: str):
+
+        self.cfg = load_config(cfg_filepath)
+        self.device = self.cfg.device
 
         self.visualizer = None
-        self.available_slots = num_objects
+        self.available_slots = np.inf
         self.tracking_started = False
-        self.num_objects = num_objects
-        self.device = device
-        self.boxmot = boxmot
 
-        self.detector = YOLODetector(ckpt_path=YOLO_CHECKPOINT_FILEPATH,
-                                     conf_threshold=0.6,
-                                     device=device,
-                                     labels=labels
+        self.detector = YOLODetector(ckpt_path=self.cfg.yolo.checkpoint_filepath,
+                                     conf_threshold=self.cfg.yolo.conf_threshold,
+                                     device=self.device,
+                                     labels=self.cfg.yolo.labels
                                      )
 
-        if self.boxmot:
-            self.tracker = BOXMotTracker(ckpt_path=BOXMOT_CHECKPOINT_FILEPATH,
-                                         device=device
+        if self.cfg.boxmot.enabled:
+            self.tracker = BOXMotTracker(ckpt_path=self.cfg.boxmot.checkpoint_filepath,
+                                         device=self.device
                                          )
 
         else:
-            self.tracker = SAMTracker(config_file=SAM_CONFIG_FILEPATH,
-                                      ckpt_path=SAM_CHECKPOINT_FILEPATH,
-                                      num_objects=num_objects,
-                                      device=device,
-                                      iou_threshold=0.7
+            self.tracker = SAMTracker(config_file=self.cfg.sam.config_filepath,
+                                      ckpt_path=self.cfg.sam.checkpoint_filepath,
+                                      num_objects=self.cfg.sam.num_objects,
+                                      device=self.device,
+                                      iou_threshold=self.cfg.sam.iou_threshold
                                       )
 
-        if visualize:
+        if self.cfg.visualize:
             from visualizer import Visualizer
             self.visualizer = Visualizer(video_width=1024,
                                          video_height=1024,
-                                         num_masks=num_objects if not boxmot else 50,
+                                         num_masks=self.cfg.sam.num_objects if not self.cfg.boxmot.enabled else 50,
                                          save_video=True,
                                          output_path='./segmented_video.mp4'
                                          )
@@ -513,7 +503,7 @@ class Tracker:
 
             self.tracker.update_memory_bank(prediction=sam_out)
 
-            masks, track_ids = sam_out['pred_masks'], list(range(self.num_objects))
+            masks, track_ids = sam_out['pred_masks'], list(range(self.tracker.num_objects))
 
             return masks, track_ids
 
@@ -543,7 +533,7 @@ class Tracker:
         run_time_start = time.time()
 
         with torch.inference_mode(), torch.autocast(self.device.split(':')[0],
-                                                    dtype=torch.bfloat16 if not self.boxmot else torch.float16
+                                                    dtype=torch.bfloat16 if not self.cfg.boxmot.enabled else torch.float16
                                                     ):
             for img in self.get_next_frame(source):
                 masks, track_ids = self.process_frame(frame=img)
@@ -553,7 +543,7 @@ class Tracker:
 
                 # Visualize if needed
                 if self.visualizer is not None:
-                    masks = masks.unsqueeze(1) - 0.5 if self.boxmot else masks
+                    masks = masks.unsqueeze(1) - 0.5 if self.cfg.boxmot.enabled else masks
                     self.visualizer.add_frame(frame=img, mask=masks, object_id=track_ids)
 
 
@@ -565,11 +555,5 @@ class Tracker:
 if __name__ == '__main__':
     args = parse_args()
 
-    tracker = Tracker(device=args.device,
-                      labels=args.labels,
-                      num_objects=args.num_objects,
-                      visualize=args.visualize,
-                      boxmot=args.boxmot
-                      )
-
+    tracker = Tracker(cfg_filepath=args.cfg_filepath)
     tracker.process_frames(source=args.source)

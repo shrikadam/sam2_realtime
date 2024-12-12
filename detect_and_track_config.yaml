@@ -1,0 +1,17 @@
+visualize: true
+device: "cuda:0"
+boxmot:
+  enabled: false
+  checkpoint_filepath: "osnet_x0_25_msmt17.pt"
+yolo:
+  checkpoint_filepath: "yolov8x-seg.pt"
+  conf_threshold: 0.6
+  labels:
+    - 0
+    - 1
+    - 2
+sam:
+  config_filepath: "./configs/samurai/sam2.1_hiera_b+.yaml"
+  checkpoint_filepath: "./checkpoints/sam2.1_hiera_base_plus.pt"
+  num_objects: 3
+  iou_threshold: 0.7
