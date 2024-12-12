@@ -550,7 +550,7 @@ class Tracker:
 
                 if masks is None:
                     continue
-                    
+
                 # Visualize if needed
                 if self.visualizer is not None:
                     masks = masks.unsqueeze(1) - 0.5 if self.boxmot else masks
