@@ -10,8 +10,9 @@ import numpy as np
 import torch
 import torch.nn.functional as F
 from boxmot import StrongSORT
-from sam2.build_sam import build_sam2_object_tracker
 from ultralytics import YOLO
+
+from sam2.build_sam import build_sam2_object_tracker
 
 SAM_CHECKPOINT_FILEPATH = "./checkpoints/sam2.1_hiera_base_plus.pt"
 YOLO_CHECKPOINT_FILEPATH = "yolov8x-seg.pt"
@@ -419,131 +420,156 @@ class YOLODetector:
         return {'masks': masks, 'boxes': boxes, 'cls': cls, 'conf': conf}
 
 
-def get_next_frame(source):
-    if os.path.isdir(source):
-        img_filenames = [f for f in os.listdir(source) if f.endswith('.jpg')]
-        img_filenames.sort()
-        img_filepaths = [os.path.join(source, f) for f in img_filenames]
+class Tracker:
+    def __init__(self,
+                 device: str,
+                 labels: List = None,
+                 visualize: bool = False,
+                 num_objects: int = None,
+                 boxmot: bool = False
+                 ):
 
-        for img_filepath in img_filepaths:
-            img = cv2.imread(filename=img_filepath)
+        self.visualizer = None
+        self.available_slots = num_objects
+        self.tracking_started = False
+        self.num_objects = num_objects
+        self.device = device
+        self.boxmot = boxmot
 
-            yield cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+        self.detector = YOLODetector(ckpt_path=YOLO_CHECKPOINT_FILEPATH,
+                                     conf_threshold=0.6,
+                                     device=device,
+                                     labels=labels
+                                     )
 
-    else:  # Assume video file path
-        cap = cv2.VideoCapture(source)
-        while cap.isOpened():
-            ret, img = cap.read()
-            if not ret:
-                break
-            yield cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+        if self.boxmot:
+            self.tracker = BOXMotTracker(ckpt_path=BOXMOT_CHECKPOINT_FILEPATH,
+                                         device=device
+                                         )
 
-        cap.release()
+        else:
+            self.tracker = SAMTracker(config_file=SAM_CONFIG_FILEPATH,
+                                      ckpt_path=SAM_CHECKPOINT_FILEPATH,
+                                      num_objects=num_objects,
+                                      device=device,
+                                      iou_threshold=0.7
+                                      )
+
+        if visualize:
+            from visualizer import Visualizer
+            self.visualizer = Visualizer(video_width=1024,
+                                         video_height=1024,
+                                         num_masks=num_objects if not boxmot else 50,
+                                         save_video=True,
+                                         output_path='./segmented_video.mp4'
+                                         )
+
+    def get_next_frame(self, source):
+        if os.path.isdir(source):
+            img_filenames = [f for f in os.listdir(source) if f.endswith('.jpg')]
+            img_filenames.sort()
+            img_filepaths = [os.path.join(source, f) for f in img_filenames]
+
+            for img_filepath in img_filepaths:
+                img = cv2.imread(filename=img_filepath)
+
+                yield cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+
+        else:  # Assume video file path
+            cap = cv2.VideoCapture(source)
+            while cap.isOpened():
+                ret, img = cap.read()
+                if not ret:
+                    break
+                yield cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+
+            cap.release()
 
 
-def run(source: str,
-        device: str,
-        labels: List = None,
-        visualize: bool = False,
-        num_objects: int = None,
-        boxmot: bool = False
-        ):
+    def process_frame(self, frame: np.ndarray):
+        # Get detections from YOLO
+        detections = self.detector.get_detections(img=frame) if self.available_slots > 0 else None
 
-    detector = YOLODetector(ckpt_path=YOLO_CHECKPOINT_FILEPATH, conf_threshold=0.6, device=device, labels=labels)
+        if not self.tracking_started:
+            if detections is None:
+                return None, None
+            else:
+                self.tracking_started = True
 
-    if boxmot:
-        tracker = BOXMotTracker(ckpt_path=BOXMOT_CHECKPOINT_FILEPATH, device=device)
+        if isinstance(self.tracker, SAMTracker):
+            sam_out = self.tracker.track_frame(img=frame)
 
-    else:
-        tracker = SAMTracker(config_file=SAM_CONFIG_FILEPATH,
-                             ckpt_path=SAM_CHECKPOINT_FILEPATH,
-                             num_objects=num_objects,
-                             device=device,
-                             iou_threshold=0.7
+            if detections is not None:
+                new_object_masks = self.tracker.check_for_new_objects(object_masks=detections['masks'],
+                                                                      sam_masks=sam_out['pred_masks']
+                                                                      )
+
+                self.available_slots = self.tracker.num_objects - self.tracker.sam.curr_obj_idx
+
+                if len(new_object_masks) > 0 and self.available_slots > 0:
+                    sam_out = self.tracker.track_new_object(new_object_masks=new_object_masks,
+                                                            tracked_object_masks=sam_out['pred_masks']
+                                                            )
+
+            self.tracker.update_memory_bank(prediction=sam_out)
+
+            masks, track_ids = sam_out['pred_masks'], list(range(self.num_objects))
+
+            return masks, track_ids
+
+        else:
+            if detections is None:
+                return None, None
+
+            dets = torch.cat((detections['boxes'],
+                              detections['conf'].reshape((-1, 1)),
+                              detections['cls'].reshape((-1, 1))
+                              ), dim=1
                              )
 
-    visualizer = None
-    if visualize:
-        from visualizer import Visualizer
-        visualizer = Visualizer(video_width=1024,
-                                video_height=1024,
-                                num_masks=num_objects if not boxmot else 50,
-                                save_video=True,
-                                output_path='./segmented_video.mp4'
-                                )
+            dets = dets.cpu().numpy()
 
-    run_time_start = time.time()
+            tracks = self.tracker.get_tracks(detections=dets, img=frame)
 
-    available_slots = np.inf
-    initialized = False
+            if tracks.size == 0:
+                return None, None
 
-    with torch.inference_mode(), torch.autocast(device.split(':')[0], dtype=torch.bfloat16 if not boxmot else torch.float16):
-        for img in get_next_frame(source):
-            # Get detections from YOLO
-            detections = detector.get_detections(img=img) if available_slots > 0 else None
+            inds, track_ids = tracks[:, 7].astype('int'), tracks[:, 4].astype('int')
+            masks = detections['masks'][inds]
 
-            if not initialized:
-                if detections is None:
+            return masks, track_ids
+
+    def process_frames(self, source: str):
+        run_time_start = time.time()
+
+        with torch.inference_mode(), torch.autocast(self.device.split(':')[0],
+                                                    dtype=torch.bfloat16 if not self.boxmot else torch.float16
+                                                    ):
+            for img in self.get_next_frame(source):
+                masks, track_ids = self.process_frame(frame=img)
+
+                if masks is None:
                     continue
-                else:
-                    initialized = True
+                    
+                # Visualize if needed
+                if self.visualizer is not None:
+                    masks = masks.unsqueeze(1) - 0.5 if self.boxmot else masks
+                    self.visualizer.add_frame(frame=img, mask=masks, object_id=track_ids)
 
-            if isinstance(tracker, SAMTracker):
-                sam_out = tracker.track_frame(img=img)
 
-                if detections is not None:
-                    new_object_masks = tracker.check_for_new_objects(object_masks=detections['masks'],
-                                                                     sam_masks=sam_out['pred_masks']
-                                                                     )
-
-                    available_slots = tracker.num_objects - tracker.sam.curr_obj_idx
-
-                    if len(new_object_masks) > 0 and available_slots > 0:
-                        sam_out = tracker.track_new_object(new_object_masks=new_object_masks,
-                                                           tracked_object_masks=sam_out['pred_masks']
-                                                           )
-
-                tracker.update_memory_bank(prediction=sam_out)
-
-                masks, track_ids = sam_out['pred_masks'], list(range(num_objects))
-
-            else:
-                if detections is None:
-                    continue
-
-                dets = torch.cat((detections['boxes'],
-                                  detections['conf'].reshape((-1, 1)),
-                                  detections['cls'].reshape((-1, 1))
-                                  ), dim=1
-                                 )
-
-                dets = dets.cpu().numpy()
-
-                tracks = tracker.get_tracks(detections=dets, img=img)
-
-                if tracks.size == 0:
-                    continue
-
-                inds, track_ids = tracks[:, 7].astype('int'), tracks[:, 4].astype('int')
-                masks = detections['masks'][inds]
-
-            # Visualize if needed
-            if visualize:
-                masks = masks.unsqueeze(1) - 0.5 if boxmot else masks
-                visualizer.add_frame(frame=img, mask=masks, object_id=track_ids)
-
-    print('Runtime:', time.time() - run_time_start)
-    if visualize:
-        visualizer.stop()
+        print('Runtime:', time.time() - run_time_start)
+        if self.visualizer is not None:
+            self.visualizer.stop()
 
 
 if __name__ == '__main__':
     args = parse_args()
 
-    run(source=args.source,
-        device=args.device,
-        labels=args.labels,
-        num_objects=args.num_objects,
-        visualize=args.visualize,
-        boxmot=args.boxmot
-        )
+    tracker = Tracker(device=args.device,
+                      labels=args.labels,
+                      num_objects=args.num_objects,
+                      visualize=args.visualize,
+                      boxmot=args.boxmot
+                      )
+
+    tracker.process_frames(source=args.source)
