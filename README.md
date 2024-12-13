@@ -26,7 +26,6 @@ repository to maintain the original SAM2 codebase.
 
 - **Real-Time Tracking**: Modified SAM2 to track a fixed number of objects in real time.
 - **Motion-Aware Memory**: SAMURAI leverages temporal motion cues for robust object tracking without retraining or fine-tuning.
-- **YOLO Integration**: Utilizes YOLO for object detection and mask generation as input to SAM2.
 
 The core implementation resides in `sam2_object_tracker.py`, where the number of objects to track must be specified during instantiation.
 
@@ -62,23 +61,8 @@ cd ..
 
 ## Usage
 ### Demo
-Run the demo notebook to visualize YOLO object detection and SAM2 object tracking in action:  
+Run the demo notebook to visualize real-time SAM2 object tracking in action:  
 `notebooks/realtime_detect_and_track.ipynb`
-
-### Inference
-To perform detection and tracking on a video source, use the following script:  
-```bash
-python detect_and_track.py \
-  --source "/data/datasets/SAM2/sav_train/sav_021/sav_021835.mp4" \
-  --cfg_filepath "./detect_and_track_config.yaml"
-```
-`detect_and_track_config.yaml` provides additional parameters that can be set, including options to: 
-1. Enable or disable visualization
-2. Select the GPU device
-3. Enable BoxMOT tracking for use instead of SAM tracking
-4. Configure YOLO's detection confidence threshold and specify labels to detect
-5. Set parameters for SAM including the number of objects to track and the IoU threshold for determining whether a YOLO 
-   detection is already being tracked
 
 
 ### Acknowledgment
