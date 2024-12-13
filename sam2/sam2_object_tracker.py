@@ -1032,14 +1032,6 @@ class SAM2ObjectTracker(SAM2Base):
                                     prev_sam_mask_logits=None,
                                     )
 
-        # make a compact version of this frame's output to reduce the state size
-        prediction = {"maskmem_features": prediction['maskmem_features'],
-                      "maskmem_pos_enc": prediction['maskmem_pos_enc'],
-                      "pred_masks": prediction["pred_masks"],
-                      "obj_ptr": prediction["obj_ptr"],
-                      "object_score_logits": prediction['object_score_logits']
-                      }
-
         self.curr_obj_idx += num_new_objects
 
         self.update_memory_bank(prediction=prediction)
@@ -1096,15 +1088,6 @@ class SAM2ObjectTracker(SAM2Base):
 
         inference_time = time.time() - start_time
         start_time = time.time()
-
-        # make a compact version of this frame's output to reduce the state size
-        prediction = {"maskmem_features": prediction['maskmem_features'],
-                      "maskmem_pos_enc": prediction['maskmem_pos_enc'],
-                      "pred_masks": prediction["pred_masks"],
-                      "obj_ptr": prediction["obj_ptr"],
-                      "object_score_logits": prediction['object_score_logits']
-                      }
-
 
         self.update_memory_bank(prediction=prediction)
 
