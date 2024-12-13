@@ -35,7 +35,7 @@ The core implementation resides in `sam2_object_tracker.py`, where the number of
 
 ### 1. Create Conda Environment
 ```bash
-conda env create -f environment.yml
+conda create -n sam2 python=3.10.15
 ```
 
 ### 2. Clone SAM2 Realtime Repo
@@ -45,6 +45,7 @@ git clone https://github.com/zdata-inc/sam2_realtime
 
 ### 2. Install SAM2
 ```
+cd sam2_realtime
 pip install -e .
 pip install -e ".[notebooks]"
 ```
