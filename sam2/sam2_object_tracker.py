@@ -1001,7 +1001,6 @@ class SAM2ObjectTracker(SAM2Base):
         if isinstance(img, np.ndarray):
             img_height, img_width = img.shape[0:2]
             img = self.preprocess_image(img=img)
-
         else:
             img_height, img_width = img.shape[-2:]
 

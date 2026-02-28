@@ -40,6 +40,7 @@ class SAM2VideoPredictor(SAM2Base):
         self.clear_non_cond_mem_for_multi_obj = clear_non_cond_mem_for_multi_obj
         self.add_all_frames_to_correct_as_cond = add_all_frames_to_correct_as_cond
 
+
     @torch.inference_mode()
     def init_state(
         self,
@@ -110,6 +111,7 @@ class SAM2VideoPredictor(SAM2Base):
         self._get_image_feature(inference_state, frame_idx=0, batch_size=1)
         return inference_state
 
+
     @classmethod
     def from_pretrained(cls, model_id: str, **kwargs) -> "SAM2VideoPredictor":
         """
@@ -126,6 +128,7 @@ class SAM2VideoPredictor(SAM2Base):
 
         sam_model = build_sam2_video_predictor_hf(model_id, **kwargs)
         return sam_model
+
 
     def _obj_id_to_idx(self, inference_state, obj_id):
         """Map client-side object id to model-side object index."""
@@ -161,13 +164,16 @@ class SAM2VideoPredictor(SAM2Base):
                 f"Please call 'reset_state' to restart from scratch."
             )
 
+
     def _obj_idx_to_id(self, inference_state, obj_idx):
         """Map model-side object index to client-side object id."""
         return inference_state["obj_idx_to_id"][obj_idx]
 
+
     def _get_obj_num(self, inference_state):
         """Get the total number of unique object ids received so far in this session."""
         return len(inference_state["obj_idx_to_id"])
+
 
     @torch.inference_mode()
     def add_new_points_or_box(
@@ -313,9 +319,11 @@ class SAM2VideoPredictor(SAM2Base):
         )
         return frame_idx, obj_ids, video_res_masks
 
+
     def add_new_points(self, *args, **kwargs):
         """Deprecated method. Please use `add_new_points_or_box` instead."""
         return self.add_new_points_or_box(*args, **kwargs)
+
 
     @torch.inference_mode()
     def add_new_mask(
@@ -401,6 +409,7 @@ class SAM2VideoPredictor(SAM2Base):
         )
         return frame_idx, obj_ids, video_res_masks
 
+
     def _get_orig_video_res_output(self, inference_state, any_res_masks):
         """
         Resize the object scores to the original video resolution (video_res_masks)
@@ -422,6 +431,7 @@ class SAM2VideoPredictor(SAM2Base):
         if self.non_overlap_masks:
             video_res_masks = self._apply_non_overlapping_constraints(video_res_masks)
         return any_res_masks, video_res_masks
+
 
     def _consolidate_temp_output_across_obj(
         self,
@@ -553,6 +563,7 @@ class SAM2VideoPredictor(SAM2Base):
 
         return consolidated_out
 
+
     def _get_empty_mask_ptr(self, inference_state, frame_idx):
         """Get a dummy object pointer based on an empty mask on the current frame."""
         # A dummy (empty) mask with a single object
@@ -588,6 +599,7 @@ class SAM2VideoPredictor(SAM2Base):
             prev_sam_mask_logits=None,
         )
         return current_out["obj_ptr"]
+
 
     @torch.inference_mode()
     def propagate_in_video_preflight(self, inference_state):
@@ -658,6 +670,7 @@ class SAM2VideoPredictor(SAM2Base):
         for mask_inputs_per_frame in inference_state["mask_inputs_per_obj"].values():
             input_frames_inds.update(mask_inputs_per_frame.keys())
         assert all_consolidated_frame_inds == input_frames_inds
+
 
     @torch.inference_mode()
     def propagate_in_video(
@@ -744,6 +757,7 @@ class SAM2VideoPredictor(SAM2Base):
             )
             yield frame_idx, obj_ids, video_res_masks
 
+
     def _add_output_per_object(
         self, inference_state, frame_idx, current_out, storage_key
     ):
@@ -772,6 +786,7 @@ class SAM2VideoPredictor(SAM2Base):
             if maskmem_pos_enc is not None:
                 obj_out["maskmem_pos_enc"] = [x[obj_slice] for x in maskmem_pos_enc]
             obj_output_dict[storage_key][frame_idx] = obj_out
+
 
     @torch.inference_mode()
     def clear_all_prompts_in_frame(
@@ -844,6 +859,7 @@ class SAM2VideoPredictor(SAM2Base):
         )
         return frame_idx, obj_ids, video_res_masks
 
+
     @torch.inference_mode()
     def reset_state(self, inference_state):
         """Remove all input points or mask in all frames throughout the video."""
@@ -856,6 +872,7 @@ class SAM2VideoPredictor(SAM2Base):
         inference_state["mask_inputs_per_obj"].clear()
         inference_state["output_dict_per_obj"].clear()
         inference_state["temp_output_dict_per_obj"].clear()
+
 
     def _reset_tracking_results(self, inference_state):
         """Reset all tracking inputs and results across the videos."""
@@ -875,6 +892,7 @@ class SAM2VideoPredictor(SAM2Base):
         inference_state["consolidated_frame_inds"]["non_cond_frame_outputs"].clear()
         inference_state["tracking_has_started"] = False
         inference_state["frames_already_tracked"].clear()
+
 
     def _get_image_feature(self, inference_state, frame_idx, batch_size):
         """Compute the image features on a given frame."""
@@ -908,6 +926,7 @@ class SAM2VideoPredictor(SAM2Base):
         features = self._prepare_backbone_features(expanded_backbone_out)
         features = (expanded_image,) + features
         return features
+
 
     def _run_single_frame_inference(
         self,
@@ -977,6 +996,7 @@ class SAM2VideoPredictor(SAM2Base):
         }
         return compact_current_out, pred_masks_gpu
 
+
     def _run_memory_encoder(
         self,
         inference_state,
@@ -1013,6 +1033,7 @@ class SAM2VideoPredictor(SAM2Base):
         )
         return maskmem_features, maskmem_pos_enc
 
+
     def _get_maskmem_pos_enc(self, inference_state, current_out):
         """
         `maskmem_pos_enc` is the same across frames and objects, so we cache it as
@@ -1037,6 +1058,7 @@ class SAM2VideoPredictor(SAM2Base):
         else:
             expanded_maskmem_pos_enc = None
         return expanded_maskmem_pos_enc
+
 
     @torch.inference_mode()
     def remove_object(self, inference_state, obj_id, strict=False, need_output=True):
@@ -1151,6 +1173,7 @@ class SAM2VideoPredictor(SAM2Base):
                 updated_frames.append((frame_idx, video_res_masks))
 
         return inference_state["obj_ids"], updated_frames
+
 
     def _clear_non_cond_mem_around_input(self, inference_state, frame_idx):
         """

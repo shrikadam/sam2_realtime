@@ -9,3 +9,5 @@ _C.*
 outputs/*
 checkpoints/*.pt
 *.idea
+checkpoints/*.onnx
+onnx/trt_cache
